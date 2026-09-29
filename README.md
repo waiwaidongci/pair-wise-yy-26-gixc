@@ -26,8 +26,19 @@ python -m unittest discover -s tests -v
 - `POST /api/fixes`、`POST /api/extensions`
 - `POST /api/reports/{id}/status`
 - `POST /api/advisories`、`GET /api/reports/{id}/advisory?user_id=...`
-- `POST /api/reports/{id}/publish`
+- `POST /api/reports/{id}/publish`、`POST /api/reports/{id}/advisory/confirm`
+- `POST /api/reports/{id}/evidence/{eid}/versions`、`GET /api/reports/{id}/evidence/{eid}/versions?user_id=...`
 - `GET /api/reports/{id}?user_id=...`
 - `GET /api/reports/{id}/notifications`
 
 状态流转限制为 `new -> triaged -> fixing -> resolved -> published`，拒绝或回到修复中也有显式规则。披露日期早于保密期限时请求会失败，不会只修改显示状态。
+
+## 材料版本化
+
+每份取证材料的正文都不可覆盖，只追加版本：
+
+- 首次提交即 v1，之后每次修改调用 `.../evidence/{eid}/versions` 追加 v2、v3……每版保存内容（含 SHA-256 指纹）、提交人、时间和修改原因，旧版永久可查（版本历史接口与报告详情页均含完整链路）。
+- 请求必须带 `expected_version`（所基于的基准版本号）。两人同时改同一材料时只有一人成功，基准过期的后到请求返回 **409**，请刷新到最新版后重试；`(材料, 版本号)` 有唯一约束，不会出现相同版本号。
+- 已公开报告不允许改正文，只能追加版本。一旦追加，公告状态由 `published` 变为 `pending`（待确认），外部用户在确认前仍只能看到旧的公开版本；协调员调用 `.../advisory/confirm` 重新确认后，公开快照更新到最新版本。
+- 报告详情页展示每份材料每版的指纹、修改原因、当前版本标记、已公开版本标记及当前公开内容。
+
