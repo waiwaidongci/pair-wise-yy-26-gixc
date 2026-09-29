@@ -23,11 +23,21 @@ python -m unittest discover -s tests -v
 - `POST /api/users`、`POST /api/products`、`POST /api/reports`
 - `GET /api/duplicates?product_id=...&version=...`
 - `POST /api/members`、`POST /api/evidence`
+- `POST /api/evidence/{id}/versions`、`GET /api/evidence/{id}/versions?user_id=...`
 - `POST /api/fixes`、`POST /api/extensions`
 - `POST /api/reports/{id}/status`
 - `POST /api/advisories`、`GET /api/reports/{id}/advisory?user_id=...`
+- `POST /api/reports/{id}/advisory/confirm`
 - `POST /api/reports/{id}/publish`
 - `GET /api/reports/{id}?user_id=...`
 - `GET /api/reports/{id}/notifications`
 
 状态流转限制为 `new -> triaged -> fixing -> resolved -> published`，拒绝或回到修复中也有显式规则。披露日期早于保密期限时请求会失败，不会只修改显示状态。
+
+## 材料版本
+
+- 每份材料首次提交即生成 v1；此后每次修改都**追加新版本**，旧版本内容、SHA-256 内容指纹、修改原因、提交人和提交时间全部保留可查（`GET /api/evidence/{id}/versions`），不会被协调员改说明覆盖。
+- 追加版本需带 `expected_version`（你编辑时基于的版本号）和 `change_reason`。服务端在 `BEGIN IMMEDIATE` 事务内比对当前版本并分配新版本号（版本号有 UNIQUE 约束）：两人同时改同一材料时只有一人成功，后到者收到 **409 Conflict**，要求基于最新版本重试，不会出现相同版本号。
+- 内容指纹为正文的 SHA-256；新旧版本指纹相同（内容没变化）不生成新版本。
+- 报告详情页（内部）与公告接口（公开）都列出每版的版本号、指纹、原因、提交人和时间，以及当前公开内容。
+- 已公开报告的公告只允许追加版本：公开后新增/修改材料（或编辑公告正文）时公告状态从 `published` 变为 `pending`（待确认），**对外仍展示确认前的公开内容**，材料快照标注 `changed_since_publish`；协调员调用确认接口后新正文与材料新版本才成为公开内容。

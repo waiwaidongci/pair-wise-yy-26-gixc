@@ -1,1 +1,140 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>漏洞披露协作</title><style>body{font:15px system-ui;max-width:1080px;margin:24px auto;padding:0 16px;background:#f4f6f8}section{background:#fff;padding:16px;margin:12px 0;border:1px solid #ddd;border-radius:10px}input,select,textarea,button{padding:7px;margin:3px;border:1px solid #bbb;border-radius:6px}button{background:#7a1f1f;color:#fff}pre{white-space:pre-wrap;max-height:400px;overflow:auto}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.grid input,.grid textarea{width:90%}</style><h1>开源漏洞披露协作</h1><section><button onclick="state()">刷新状态</button><pre id="state"></pre></section><section><h2>报告协同</h2><div class="grid"><input id="report" type="number" placeholder="报告 ID"><input id="user" type="number" placeholder="用户 ID"><input id="coord" type="number" placeholder="协调员 ID"><input id="status" placeholder="new/triaged/fixing/resolved"><input id="deadline" value="2026-12-31"><input id="reason" placeholder="延期理由"></div><button onclick="view()">查看可见报告</button><button onclick="setStatus()">更新状态</button><button onclick="extend()">延长保密期</button><button onclick="publish()">按日期披露</button><pre id="result"></pre></section><section><h2>材料与公告</h2><input id="material" placeholder="材料名"><textarea id="content" placeholder="材料或公告内容"></textarea><button onclick="evidence()">添加材料</button><button onclick="advisory()">保存公告草稿</button><button onclick="getAdvisory()">读取公告</button><pre id="extra"></pre></section><script>const show=(el,x)=>document.querySelector(el).textContent=JSON.stringify(x,null,2);async function get(u,el='#result'){show(el,await(await fetch(u)).json())}async function post(u,b,el='#result'){show(el,await(await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json())}async function state(){show('#state',await(await fetch('/api/state')).json())}function view(){get('/api/reports/'+report.value+'?user_id='+user.value)}function setStatus(){post('/api/reports/'+report.value+'/status',{status:status.value,user_id:+coord.value,note:'页面更新'})}function extend(){post('/api/extensions',{report_id:+report.value,new_deadline:deadline.value,reason:reason.value,coordinator_id:+coord.value})}function publish(){post('/api/reports/'+report.value+'/publish',{coordinator_id:+coord.value,as_of:deadline.value})}function evidence(){post('/api/evidence',{report_id:+report.value,name:material.value,content:content.value,classification:'private',uploaded_by:+user.value})}function advisory(){post('/api/advisories',{report_id:+report.value,content:content.value,user_id:+coord.value},'#extra')}function getAdvisory(){get('/api/reports/'+report.value+'/advisory?user_id='+user.value,'#extra')}state()</script></html>
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>漏洞披露协作</title>
+<style>
+body{font:15px system-ui;max-width:1080px;margin:24px auto;padding:0 16px;background:#f4f6f8}
+section{background:#fff;padding:16px;margin:12px 0;border:1px solid #ddd;border-radius:10px}
+input,select,textarea,button{padding:7px;margin:3px;border:1px solid #bbb;border-radius:6px}
+button{background:#7a1f1f;color:#fff;cursor:pointer}
+pre{white-space:pre-wrap;max-height:400px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid input,.grid textarea{width:90%}
+.ver{border-left:3px solid #7a1f1f;padding:6px 10px;margin:6px 0;background:#faf6f6;border-radius:0 6px 6px 0}
+.fp{font-family:ui-monospace,monospace;font-size:12px;color:#555;word-break:break-all}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;margin-left:6px}
+.tag.published{background:#e2f3e2;color:#1b6b1b}
+.tag.pending{background:#fdecd4;color:#9a5a00}
+.tag.draft{background:#e7e9ee;color:#444}
+.changed{color:#b3261e;font-weight:600}
+</style>
+<h1>开源漏洞披露协作</h1>
+<section>
+  <button onclick="state()">刷新状态</button>
+  <pre id="state"></pre>
+</section>
+<section>
+  <h2>报告协同</h2>
+  <div class="grid">
+    <input id="report" type="number" placeholder="报告 ID">
+    <input id="user" type="number" placeholder="用户 ID">
+    <input id="coord" type="number" placeholder="协调员 ID">
+    <input id="status" placeholder="new/triaged/fixing/resolved">
+    <input id="deadline" value="2026-12-31">
+    <input id="reason" placeholder="延期理由">
+  </div>
+  <button onclick="view()">查看可见报告</button>
+  <button onclick="setStatus()">更新状态</button>
+  <button onclick="extend()">延长保密期</button>
+  <button onclick="publish()">按日期披露</button>
+  <pre id="result"></pre>
+</section>
+<section>
+  <h2>材料与公告</h2>
+  <div class="grid">
+    <input id="material" placeholder="材料名">
+    <input id="evidenceId" type="number" placeholder="材料 ID（追加版本）">
+    <input id="expected" type="number" placeholder="我基于的版本号">
+  </div>
+  <textarea id="content" placeholder="材料或公告内容" style="width:95%;height:70px"></textarea><br>
+  <input id="changeReason" placeholder="修改原因（追加版本必填）" style="width:45%">
+  <div style="margin-top:6px">
+    <button onclick="evidence()">添加材料</button>
+    <button onclick="newVersion()">基于版本追加</button>
+    <button onclick="versions()">查材料版本</button>
+    <button onclick="advisory()">保存公告草稿</button>
+    <button onclick="confirmAdvisory()">确认公告更新</button>
+    <button onclick="getAdvisory()">读取公告</button>
+  </div>
+  <pre id="extra"></pre>
+  <div id="detail"></div>
+</section>
+<script>
+const $=id=>document.querySelector('#'+id);
+const show=(el,x)=>$(el).textContent=JSON.stringify(x,null,2);
+async function post(u,b,el='#result'){
+  const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  show(el,await r.json()); return r.status;
+}
+async function getJSON(u){const r=await fetch(u);return{status:r.status,body:await r.json()}}
+async function state(){show('state',await(await fetch('/api/state')).json())}
+function view(){
+  getJSON('/api/reports/'+$('report').value+'?user_id='+$('user').value).then(({body})=>{
+    show('result',body); renderDetail(body);
+  });
+}
+function setStatus(){post('/api/reports/'+$('report').value+'/status',{status:$('status').value,user_id:+$('coord').value,note:'页面更新'})}
+function extend(){post('/api/extensions',{report_id:+$('report').value,new_deadline:$('deadline').value,reason:$('reason').value,coordinator_id:+$('coord').value})}
+function publish(){post('/api/reports/'+$('report').value+'/publish',{coordinator_id:+$('coord').value,as_of:$('deadline').value})}
+function evidence(){post('/api/evidence',{report_id:+$('report').value,name:$('material').value,content:$('content').value,classification:'private',uploaded_by:+$('user').value,change_reason:$('changeReason').value},'#extra')}
+function newVersion(){
+  post('/api/evidence/'+$('evidenceId').value+'/versions',{
+    content:$('content').value,user_id:+$('user').value,
+    expected_version:+$('expected').value,change_reason:$('changeReason').value
+  },'#extra').then(s=>{if(s===201||s===409)versions()});
+}
+function versions(){
+  getJSON('/api/evidence/'+$('evidenceId').value+'/versions?user_id='+$('user').value).then(({body})=>{
+    show('extra',body); renderVersions(body);
+  });
+}
+function advisory(){post('/api/advisories',{report_id:+$('report').value,content:$('content').value,user_id:+$('coord').value},'#extra')}
+function confirmAdvisory(){
+  post('/api/reports/'+$('report').value+'/advisory/confirm',
+    {coordinator_id:+$('coord').value,content:$('content').value},'#extra').then(()=>getAdvisory());
+}
+function getAdvisory(){
+  getJSON('/api/reports/'+$('report').value+'/advisory?user_id='+$('user').value).then(({body})=>{
+    show('extra',body); renderAdvisory(body);
+  });
+}
+function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function versionBlock(v){
+  return `<div class="ver">v${v.version} <b>${esc(v.uploader_name||v.uploaded_by)}</b> <span class="fp">${esc(v.created_at)}</span><br>`+
+         `原因：${esc(v.change_reason)}<br><span class="fp">指纹 sha256:${esc(v.fingerprint)}</span></div>`;
+}
+function renderVersions(body){
+  if(!body||!body.versions){$('detail').innerHTML='';return}
+  $('detail').innerHTML=`<h3>材料「${esc(body.name)}」当前 v${body.current_version} · 共 ${body.versions.length} 版</h3>`+
+    body.versions.slice().reverse().map(versionBlock).join('');
+}
+function renderDetail(body){
+  if(!body||!body.evidence)return;
+  const adv=body.advisory;
+  let html='<h3>材料版本</h3>'+body.evidence.map(e=>
+    `<div class="ver">材料 #${e.id} ${esc(e.name)}（当前 v${e.current_version}）`+
+    e.versions.slice().reverse().map(versionBlock).join('')+'</div>').join('');
+  if(adv){
+    html+=`<h3>公告 <span class="tag ${adv.status}">${adv.status}</span></h3>`+
+      `<p><b>当前公开内容：</b>${adv.published_content?esc(adv.published_content):'（尚未公开）'}</p>`+
+      (adv.content&&adv.status!=='published'?`<p><b>待确认/草稿：</b>${esc(adv.content)}</p>`:'');
+  }
+  $('detail').innerHTML=html;
+}
+function renderAdvisory(adv){
+  if(!adv||adv.error){$('detail').innerHTML=esc(adv&&adv.error||'');return}
+  let html=`<h3>公告 ${esc(adv.public_id)} <span class="tag ${adv.status}">${adv.status}</span></h3>`+
+    `<p><b>当前公开内容：</b>${esc(adv.published_content||adv.content||'')}</p>`+
+    (adv.draft_content?`<p><b>待确认正文（仅内部可见）：</b>${esc(adv.draft_content)}</p>`:'');
+  if(adv.materials&&adv.materials.length){
+    html+='<h3>公开材料指纹</h3>'+adv.materials.map(m=>
+      `<div class="ver">${esc(m.name)}（${esc(m.classification)}）`+
+      (m.changed_since_publish?'<div class="changed">⚠ 公开后被更新：公开时 v'+m.published_version+' → 当前 v'+m.current_version+'，待协调员确认</div>':'')+
+      m.versions.slice().reverse().map(versionBlock).join('')+
+      `<div class="fp">本次公开快照 v${m.published_version} @ ${esc(m.published_at)}<br>${esc(m.published_fingerprint||'')}</div></div>`).join('');
+  }
+  $('detail').innerHTML=html;
+}
+state();
+</script>
+</html>

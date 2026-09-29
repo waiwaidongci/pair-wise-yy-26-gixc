@@ -3,7 +3,7 @@ import json, os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from database import DomainError, VulnerabilityDB
+from database import ConflictError, DomainError, VulnerabilityDB
 
 BASE=Path(__file__).resolve().parent
 DB_PATH=os.environ.get("VULN_DB",str(BASE/"vulnerability.db"))
@@ -32,9 +32,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200,{"notifications":self.db.notifications_for(int(parts[2]))})
             if len(parts)==4 and parts[:2]==["api","reports"] and parts[3]=="advisory":
                 uid=int(parse_qs(parsed.query).get("user_id",[0])[0]); return self._json(200,self.db.get_advisory(int(parts[2]),uid))
+            if len(parts)==4 and parts[:2]==["api","evidence"] and parts[3]=="versions":
+                uid=int(parse_qs(parsed.query).get("user_id",[0])[0]); return self._json(200,self.db.evidence_versions(int(parts[2]),uid))
             if parsed.path=="/api/duplicates":
                 q=parse_qs(parsed.query); return self._json(200,{"duplicates":self.db.find_duplicate_reports(int(q.get("product_id",[0])[0]),q.get("version",[""])[0])})
             self._json(404,{"ok":False,"error":"接口不存在"})
+        except ConflictError as exc: self._json(409,{"ok":False,"error":str(exc)})
         except (DomainError,ValueError) as exc: self._json(400,{"ok":False,"error":str(exc)})
     def do_POST(self):
         parts=[p for p in urlparse(self.path).path.split("/") if p]; path="/"+"/".join(parts)
@@ -44,13 +47,20 @@ class Handler(BaseHTTPRequestHandler):
             if path=="/api/products": return self._json(201,{"ok":True,"id":self.db.add_product(str(b.get("name","")),str(b.get("owner","")))})
             if path=="/api/reports": return self._json(201,{"ok":True,"id":self.db.create_report(str(b.get("title","")),int(b.get("product_id",0)),int(b.get("reporter_id",0)),str(b.get("summary","")),str(b.get("confidential_until","")),list(b.get("versions",[])),str(b.get("version_details","")),bool(b.get("allow_duplicate",False)))})
             if path=="/api/members": self.db.add_member(int(b.get("report_id",0)),int(b.get("user_id",0)),str(b.get("member_role","maintainer")),int(b.get("added_by",0))); return self._json(201,{"ok":True})
-            if path=="/api/evidence": return self._json(201,{"ok":True,"id":self.db.add_evidence(int(b.get("report_id",0)),str(b.get("name","")),str(b.get("content","")),str(b.get("classification","private")),int(b.get("uploaded_by",0)))})
+            if path=="/api/evidence": return self._json(201,{"ok":True,"id":self.db.add_evidence(int(b.get("report_id",0)),str(b.get("name","")),str(b.get("content","")),str(b.get("classification","private")),int(b.get("uploaded_by",0)),str(b.get("change_reason","")))})
+            if len(parts)==4 and parts[:2]==["api","evidence"] and parts[3]=="versions":
+                try: expected=int(b.get("expected_version",0))
+                except (TypeError,ValueError): expected=0
+                return self._json(201,{"ok":True,"version":self.db.add_evidence_version(int(parts[2]),str(b.get("content","")),int(b.get("user_id",0)),expected,str(b.get("change_reason","")))})
             if path=="/api/fixes": return self._json(201,{"ok":True,"id":self.db.set_fix_plan(int(b.get("report_id",0)),int(b.get("maintainer_id",0)),str(b.get("plan","")),b.get("target_date"))})
             if path=="/api/extensions": return self._json(201,{"ok":True,"id":self.db.extend_embargo(int(b.get("report_id",0)),str(b.get("new_deadline","")),str(b.get("reason","")),int(b.get("coordinator_id",0)))})
             if path=="/api/advisories": return self._json(201,{"ok":True,"id":self.db.create_advisory_draft(int(b.get("report_id",0)),str(b.get("content","")),int(b.get("user_id",0)))})
+            if len(parts)==5 and parts[:2]==["api","reports"] and parts[3]=="advisory" and parts[4]=="confirm":
+                return self._json(200,{"ok":True,"advisory":self.db.confirm_advisory_update(int(parts[2]),int(b.get("coordinator_id",0)),b.get("content"))})
             if len(parts)==4 and parts[:2]==["api","reports"] and parts[3]=="status": self.db.set_status(int(parts[2]),str(b.get("status","")),int(b.get("user_id",0)),str(b.get("note",""))); return self._json(200,{"ok":True})
             if len(parts)==4 and parts[:2]==["api","reports"] and parts[3]=="publish": self.db.publish_report(int(parts[2]),int(b.get("coordinator_id",0)),b.get("as_of")); return self._json(200,{"ok":True})
             self._json(404,{"ok":False,"error":"接口不存在"})
+        except ConflictError as exc: self._json(409,{"ok":False,"error":str(exc)})
         except (DomainError,ValueError) as exc: self._json(400,{"ok":False,"error":str(exc)})
 
 def main():
